@@ -1,0 +1,94 @@
+/* Main window styles */
+QMainWindow {
+    background-color: #f5f5f5;
+}
+
+/* Camera display */
+#cameraDisplay {
+    background-color: #333;
+    color: white;
+    border-radius: 8px;
+    padding: 20px;
+    font-size: 18px;
+}
+
+/* Directory selection */
+QLineEdit {
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+QPushButton#dirButton {
+    background-color: #4CAF50;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+}
+
+QPushButton#dirButton:hover {
+    background-color: #388E3C;
+}
+
+/* Data collection buttons */
+QPushButton#startInjectBtn {
+    background-color: #2196F3;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+QPushButton#startInjectBtn:hover {
+    background-color: #1976D2;
+}
+
+QPushButton#stopBtn {
+    background-color: #f44336;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+QPushButton#stopBtn:hover {
+    background-color: #d32f2f;
+}
+
+QPushButton#startDrainBtn {
+    background-color: #4CAF50;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+QPushButton#startDrainBtn:hover {
+    background-color: #388E3C;
+}
+
+/* Form labels */
+QLabel {
+    font-size: 14px;
+    color: #333;
+}
+
+/* Container styling */
+QWidget#mainContainer {
+    background-color: white;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+/* Title styling */
+QLabel#titleLabel {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 20px;
+}
