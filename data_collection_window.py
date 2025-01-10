@@ -28,30 +28,42 @@ class DataCollectionWindow(BaseWindow):
         
     def update_frame(self):
         """Capture and display camera frame"""
-        ret, frame = self.cap.read()
-        print("Capturing frame...")
-        if ret:
-            print("Frame captured successfully.")
-            # Convert frame to RGB
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        try:
+            if not self.camera_active or not self.camera_label:
+                return
+                
+            ret, frame = self.cap.read()
+            print("Capturing frame...")
+            if ret:
+                print("Frame captured successfully.")
+                # Convert frame to RGB
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Convert to QImage
+                h, w, ch = frame.shape
+                bytes_per_line = ch * w
+                q_img = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
+                
+                # Convert to QPixmap and display
+                self.camera_label.setPixmap(QPixmap.fromImage(q_img).scaled(
+                    self.camera_label.width(),
+                    self.camera_label.height(),
+                    Qt.KeepAspectRatio
+                ))
+        except RuntimeError:
+            # Clean up if UI elements are already destroyed
+            self.release_resources()
             
-            # Convert to QImage
-            h, w, ch = frame.shape
-            bytes_per_line = ch * w
-            q_img = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
-            
-            # Convert to QPixmap and display
-            self.camera_label.setPixmap(QPixmap.fromImage(q_img).scaled(
-                self.camera_label.width(),
-                self.camera_label.height(),
-                Qt.KeepAspectRatio
-            ))
-            
-    def closeEvent(self, event):
-        """Clean up camera resources"""
+    def release_resources(self):
+        """Release camera resources when switching windows"""
         if self.camera_active:
             self.timer.stop()
             self.cap.release()
+            self.camera_active = False
+            
+    def closeEvent(self, event):
+        """Clean up camera resources"""
+        self.release_resources()
         super().closeEvent(event)
         
     def add_content(self, main_layout):

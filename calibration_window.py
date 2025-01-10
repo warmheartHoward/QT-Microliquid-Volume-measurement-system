@@ -28,6 +28,10 @@ class CalibrationWindow(BaseWindow):
             background-color: #4CAF50; 
             color: white;
             border: none;
+        }
+        QPushButton:hover {
+            background-color: #45a049;
+        }
         """)
         
         # Calibration and Homography buttons
@@ -39,6 +43,10 @@ class CalibrationWindow(BaseWindow):
             background-color: #2196F3; 
             color: white;
             border: none;
+        }
+        QPushButton:hover {
+            background-color: #1e88e5;
+        }
         """)
         self.homography_calc_btn = QPushButton("单应矩阵计算")
         self.homography_calc_btn.setStyleSheet("""
@@ -48,6 +56,10 @@ class CalibrationWindow(BaseWindow):
             background-color: #FF5722; 
             color: white;
             border: none;
+        }
+        QPushButton:hover {
+            background-color: #e64a19;
+        }
         """)
         
         # Image and Text display areas

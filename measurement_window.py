@@ -18,6 +18,10 @@ class MeasurementWindow(BaseWindow):
             background-color: #4CAF50; 
             color: white;
             border: none;
+        }
+        QPushButton:hover {
+            background-color: #45a049;
+        }
         """)
         
         # Image display areas
@@ -46,6 +50,10 @@ class MeasurementWindow(BaseWindow):
             background-color: #2196F3; 
             color: white;
             border: none;
+        }
+        QPushButton:hover {
+            background-color: #1e88e5;
+        }
         """)
         
         self.homography_measure_btn = QPushButton("单应矩阵测量")
@@ -56,6 +64,10 @@ class MeasurementWindow(BaseWindow):
             background-color: #FF5722; 
             color: white;
             border: none;
+        }
+        QPushButton:hover {
+            background-color: #e64a19;
+        }
         """)
         
         # Text display area
