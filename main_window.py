@@ -2,14 +2,17 @@
 Author: Howard
 Date: 2025-01-07 13:02:45
 LastEditors: warmheartHoward 1366194556@qq.com
-LastEditTime: 2025-01-10 14:19:21
+LastEditTime: 2025-01-10 16:17:51
 FilePath: \QT\main_window.py
 Description: 
 
 Copyright (c) 2025 by ${git_name_email}, All Rights Reserved. 
 '''
+from PyQt5.QtWidgets import QApplication
 from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QLabel, QMenuBar
 from PyQt5.QtCore import Qt
+import sys
+
 from menu_windows import (
     DataCollectionWindow,
     ImageProcessingWindow,
@@ -31,7 +34,7 @@ class MainWindow(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle('基于机器视觉的微液量进液计量系统')
-        self.resize(800, 600)
+        self.resize(1200, 800)
         
         # Create menu bar
         menubar = self.menuBar()
@@ -127,3 +130,9 @@ class MainWindow(QMainWindow):
             if window:
                 window.close()
         event.accept()
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)  # QApplication是一个应用程序对象，sys.argv参数是来自命令行的参数列表。
+    native_window = MainWindow("Howard")
+    native_window.show()
+    sys.exit(app.exec())

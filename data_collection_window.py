@@ -219,3 +219,5 @@ class DataCollectionWindow(BaseWindow):
                     border-radius: 4px;
                 }
             """)
+
+

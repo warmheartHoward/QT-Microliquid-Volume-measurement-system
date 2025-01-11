@@ -1,8 +1,29 @@
+
 from PyQt5.QtWidgets import (QPushButton, QLabel, QHBoxLayout, QVBoxLayout, 
-                            QFileDialog, QWidget, QGroupBox)
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtCore import Qt
+                            QFileDialog, QWidget, QGroupBox, QSpacerItem, QSizePolicy)
+from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
+from PyQt5.QtGui import QMovie
 from base_window import BaseWindow
+import sys
+# from image_process_utils.image_processing import imageProcessing
+from image_process_utils.image_processing_c import preprocessing
+import cv2
+import os
+import numpy as np
+
+class ProcessingThread(QThread):
+    result_ready = pyqtSignal()
+
+    def __init__(self, algorithm):
+        super().__init__()
+        self.algorithm = algorithm
+
+    def run(self):
+        # 在这里调用 self.algorithm 来执行特定的算法
+        self.algorithm()
+        self.result_ready.emit()
+
 
 class ImageProcessingWindow(BaseWindow):
     """Image processing window with new layout"""
@@ -10,11 +31,12 @@ class ImageProcessingWindow(BaseWindow):
         super().__init__("图像处理")
         self.image_path = None
         self.processed_image = None
+        self.save_path = None
         self.init_ui()
         
     def init_ui(self):
         """Initialize UI components"""
-        self.setMinimumSize(1000, 800)
+        self.setMinimumSize(1600, 1000)  # 增加窗口最小尺寸
         
     def add_content(self, main_layout):
         # Main vertical layout
@@ -40,6 +62,27 @@ class ImageProcessingWindow(BaseWindow):
         file_select_layout.addWidget(self.select_file_btn)
         file_select_layout.addStretch(1)
         vbox.addLayout(file_select_layout)
+
+        # result save path
+        # Save location
+        save_layout = QVBoxLayout()
+        self.save_path_btn = QPushButton("结果保存路径")
+        self.save_path_btn.clicked.connect(self.save_path_select)
+        self.save_path_btn.setFixedSize(120, 30)
+        self.save_path_label = QLabel("未选择保存位置, 默认为选择图片路径")
+        self.save_path_label.setStyleSheet("""
+            QLabel {
+                color: #666;
+                font-size: 12px;
+                padding: 2px;
+            }
+        """)
+        save_layout.addWidget(self.save_path_btn)
+        save_layout.addWidget(self.save_path_label)
+
+        vbox.addLayout(save_layout)
+
+
         
         # Image display area
         image_display_layout = QHBoxLayout()
@@ -78,7 +121,7 @@ class ImageProcessingWindow(BaseWindow):
         vbox.addLayout(image_display_layout)
         
         # Large horizontal image display
-        self.large_result_label = QLabel("特征提取详细结果")
+        self.large_result_label = QLabel("自适应阈值分割示意图")
         self.large_result_label.setAlignment(Qt.AlignCenter)
         self.large_result_label.setStyleSheet("""
             QLabel {
@@ -96,26 +139,13 @@ class ImageProcessingWindow(BaseWindow):
         
         # Preprocessing button
         self.preprocess_btn = QPushButton("图像前处理")
+        self.preprocess_btn.clicked.connect(lambda: self.start_task(self.preprocess_algorithm))
         self.preprocess_btn.setFixedSize(120, 30)
         
         # Segmentation button
         self.segment_btn = QPushButton("液段分割")
         self.segment_btn.setFixedSize(120, 30)
         
-        # Save location
-        save_layout = QVBoxLayout()
-        self.save_path_btn = QPushButton("选择保存位置")
-        self.save_path_btn.setFixedSize(120, 30)
-        self.save_path_label = QLabel("未选择保存位置")
-        self.save_path_label.setStyleSheet("""
-            QLabel {
-                color: #666;
-                font-size: 12px;
-                padding: 2px;
-            }
-        """)
-        save_layout.addWidget(self.save_path_btn)
-        save_layout.addWidget(self.save_path_label)
         
         # Style buttons
         for btn in [self.preprocess_btn, self.segment_btn, self.save_path_btn]:
@@ -134,8 +164,9 @@ class ImageProcessingWindow(BaseWindow):
         
         control_layout.addWidget(self.preprocess_btn)
         control_layout.addWidget(self.segment_btn)
-        control_layout.addLayout(save_layout)
+        # control_layout.addLayout(save_layout)
         vbox.addLayout(control_layout)
+        # vbox.addLayout(save_layout)
         
         # Feature extraction results display
         self.results_label = QLabel("特征提取结果将显示在此处")
@@ -150,14 +181,53 @@ class ImageProcessingWindow(BaseWindow):
         """)
         vbox.addWidget(self.results_label)
         
+
+        # 右下角加载动画
+        self.otherfunction = QHBoxLayout()
+        self.statusLabel = QLabel(self)
+        self.statusLabel.setFixedSize(50, 50)  # 增大控件尺寸
+        self.statusLabel.setStyleSheet("background: transparent;")  # 添加边框便于调试
+        self.statusLabel.raise_()  # 确保在最上层
+
+        # 一键清除功能
+        self.clearall = QPushButton("一键清除")
+        self.clearall.clicked.connect(self.clear_all)
+        self.clearall.setFixedSize(120, 30)
+        self.clearall.setStyleSheet("""
+                QPushButton {
+                    background: #4CAF50;
+                    color: white;
+                    font-size: 13px;
+                    border: none;
+                    border-radius: 4px;
+                }
+                QPushButton:hover {
+                    background: #45a049;
+                }
+        """)
+        spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+
+        self.otherfunction.addWidget(self.clearall)
+        self.otherfunction.addItem(spacer)
+        self.otherfunction.addWidget(self.statusLabel)
+        #vbox.addWidget(self.clearall, alignment=Qt.AlignBottom | Qt.AlignLeft)
+        vbox.addLayout(self.otherfunction)
+        # vbox.addWidget(self.statusLabel, alignment=Qt.AlignBottom | Qt.AlignRight)
+        # 使用绝对路径
+        self.movie = QMovie("image/loading.gif")
+        self.movie.setScaledSize(self.statusLabel.size())  # 缩放GIF尺寸
+        # self.statusLabel.setMovie(self.movie)  # 立即设置movie
         main_layout.addLayout(vbox)
         
+
     def load_image(self):
         """Handle image loading"""
         file_name, _ = QFileDialog.getOpenFileName(
             self, "选择图像文件", "", "Images (*.png *.jpg *.bmp)")
         if file_name:
             self.image_path = file_name
+            parent_directory = os.path.dirname(self.image_path)
+            self.save_path = parent_directory
             pixmap = QPixmap(file_name)
             self.original_image_label.setPixmap(
                 pixmap.scaled(
@@ -166,3 +236,84 @@ class ImageProcessingWindow(BaseWindow):
                     Qt.KeepAspectRatio
                 )
             )
+        
+    def save_path_select(self):
+        """选择保存处理完后的图片路径"""
+        # 打开文件选择对话框，并获取用户选择的文件路径
+        file_path  = QFileDialog.getExistingDirectory(
+                    None,  # 父窗口
+                    "Select Direatory",  # 对话框标题
+                    "",  # 默认路径
+                    )
+        
+        if file_path:
+            self.save_path = file_path
+            self.save_path_label.setText(file_path)
+    
+    def cv2pixmap(self, image):
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # 获取图像的维度
+        height, width, channel = image_rgb.shape
+        bytes_per_line = 3 * width
+        # 创建 QImage，然后转换为 QPixmap
+        qimage = QImage(image_rgb.data, width, height, bytes_per_line, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(qimage)
+        return pixmap
+    
+    def start_task(self, algorithm):
+        self.statusLabel.setMovie(self.movie)
+        self.movie.start()
+        
+        self.thread = ProcessingThread(algorithm)
+        self.thread.result_ready.connect(self.on_result_ready)
+        self.thread.start()
+
+        
+
+    def preprocess_algorithm(self):
+        # 显示加载动画
+        parent_directory = os.path.dirname(self.image_path)
+        grand_directory = os.path.dirname(parent_directory)
+        ex_mask_directory = os.path.join(parent_directory, "Exiting-Liquid_Entering_Mask.jpg")
+        if os.path.exists(ex_mask_directory) and self.image_path:
+            image = cv2.imread(self.image_path)
+            ex_mask = cv2.imread(ex_mask_directory)
+            sp_x, sp_y, image_line_extract= preprocessing(image, ex_mask)
+            img_result_save_path = os.path.join(self.save_path, "preprocessing_tube_line_image.jpg")
+            cv2.imwrite(img_result_save_path, image_line_extract)
+            pixmap = self.cv2pixmap(image_line_extract)
+            self.processed_image_label.setPixmap(
+                pixmap.scaled(self.processed_image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            )
+            self.results_label.setText("管道中心线提取的结果如图所示")
+            public_line_pth = os.path.join(grand_directory, f"Preprocess_public_line.npz")
+            np.savez(public_line_pth, spline_x = sp_x, spline_y = sp_y)
+
+        else:
+            self.results_label.setText("数据采集不完整")
+        
+
+
+    # 结束movie的动画
+    def on_result_ready(self):
+        self.movie.stop()
+        self.statusLabel.clear()
+
+
+    def clear_all(self):
+        self.image_path = None
+        self.processed_image = None
+        self.save_path = None
+        self.original_image_label.clear()
+        self.original_image_label.setText("原图")
+        self.processed_image_label.clear()
+        self.processed_image_label.setText("特征提取结果")
+        
+        self.large_result_label.clear()
+        self.large_result_label.setText("自适应阈值分割示意图")
+        self.results_label.clear()
+        self.results_label.setText("特征提取结果将显示在此处")
+       
+
+
+    
