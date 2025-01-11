@@ -14,11 +14,12 @@ import os
 import datetime
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QMovie, QPixmap, QImage
-
+from image_process_utils.Adapive_Threshold_Algorithm import adaptive_threshold_algorithm
 Time = datetime.datetime.now().strftime("%Y-%m-%d")
 import scienceplots
 plt.style.use('science')
 plt.savefig('figure.svg')  # 自动识别为 SVG 格式
+from io import BytesIO
 
 
 
@@ -118,9 +119,27 @@ def preprocessing(image, ex_mask):
     # 计算样条曲线上的点
     spline_x = cs_x(t_fine)
     spline_y = cs_y(t_fine)
+    # 计算一阶导数
+    dx_dt = cs_x(t_fine, 1)
+    dy_dt = cs_y(t_fine, 1)
+    # 切向向量为 (dx_dt, dy_dt)
+    # 切向向量的长度
+    norm_T = np.sqrt(dx_dt**2 + dy_dt**2)
+
+    # 切向单位向量 T(t) = (dx_dt / norm_T, dy_dt / norm_T)
+    T_x = dx_dt / norm_T
+    T_y = dy_dt / norm_T
+    # 径向方向 N(t) 可通过将 T(t) 旋转90度来获得
+    # 例如：N(t) = (-T_y, T_x)
+    N_x = -T_y
+    N_y = T_x
+    spline_points = np.column_stack((spline_x,spline_y))
+    radial_vector = np.column_stack((N_x, N_y))
+    tangent_vectors = np.column_stack((T_x, T_y))
+
     for i in range(len(spline_x)-1):
         cv2.line(line_image, (int(spline_x[i]), int(spline_y[i])),(int(spline_x[i+1]), int(spline_y[i+1])), color = (0,0,255),  thickness = 5)
-    return spline_x, spline_y, line_image
+    return spline_points, radial_vector, tangent_vectors, line_image
 
 
 def compute_average_brightness_vectorized_with_weight(
@@ -146,7 +165,7 @@ def compute_average_brightness_vectorized_with_weight(
     返回：
     brightness_values: shape=(N,) 的一维向量，每个元素为相应轨迹点邻域的加权平均亮度
     """
-    h, w = image.shape
+    h, w = image.shape[:2]
     N = len(track_points)
     brightness_values = np.zeros(N)
 
@@ -198,8 +217,63 @@ def compute_average_brightness_vectorized_with_weight(
     
     return brightness_values
 
-def liquidSegemntation(image, tube_line):
+def liquidSegemntation(image, spline_points, radial_vector, tangent_vectors):
     # 步骤一：针对tube line提取其径向与切向邻域加权亮度
+    image = distort_image(image)
+    radial_num = 15
+    tangent_num = 2
+    AV_brightness_weight = compute_average_brightness_vectorized_with_weight(image, spline_points, radial_vector, tangent_vectors, radial_num, tangent_num)
+    # 步骤二，自适应阈值分割
+    brightness_threshold_tr = max(AV_brightness_weight)-70 # 阈值下限
+    Ad_thresh, intervals = adaptive_threshold_algorithm(AV_brightness_weight, brightness_threshold_tr)
+    if Ad_thresh < brightness_threshold_tr:
+        threshold = brightness_threshold_tr
+    else:
+        threshold = Ad_thresh
+    print(f"threshold: {threshold}")
+    # 步骤三，特征提取与可视化
+    plt.figure(figsize = (8,3))
+    X = list(range(len(AV_brightness_weight))) 
 
+    plt.plot(X, AV_brightness_weight, color = "g", label = "Weighted Neighborhood Average Brightness of Trajectory point")
+    plt.axhline(y=threshold, color='b', linestyle='--', label=f'Aadptive Threshold')
+    plt.xlabel("Parameterized Node of Trajectory Point t")
+    plt.ylabel("Brightness")
+    plt.title("Adptivae hreshold Extraction of Weighted Neighborhood Average Brightness of Trajectory Point")
+    plt.legend(loc = "lower left")
+    # 将图像保存到内存缓冲区
+    buffer = BytesIO()
+    plt.savefig(buffer, format='png', dpi=300)
+    buffer.seek(0)
+
+    # 读取缓冲区数据到 OpenCV 格式（BGR）
+    ad_thresh_image_array = np.frombuffer(buffer.getvalue(), dtype=np.uint8)
+    ad_thresh_image = cv2.imdecode(ad_thresh_image_array, cv2.IMREAD_COLOR)
+
+
+    image_seg = image.copy()
+    h, _ = image_seg.shape[:2]
+    # 可视化+参数统计
+    num_liquid = 0
+    length = 0
+    begin_interval_point = True
+    touch_the_end_flag = False
+    xp,yp = spline_points[0]
+    for point, j in zip(spline_points, AV_brightness_weight):
+        if j > threshold:
+            num_liquid += 1
+            x, y = int(round(point[0])), int(round(point[1]))
+            if abs(y-h) < 20: 
+                touch_the_end_flag = True
+            cv2.circle(image_seg, (x, y), radius=5, color=(0, 255, 0), thickness=-1)  # 标记点
+            if not begin_interval_point:
+                distance = np.sqrt((x-xp)**2+(y-yp)**2)
+                length = length + distance
+            begin_interval_point = False
+            xp,yp = x,y
+        else:
+            begin_interval_point = True
+    
+    return image_seg, ad_thresh_image, length
 
 
