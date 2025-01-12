@@ -2,7 +2,7 @@
 # @Author: Howard 
 # @Contact: wangh22@mails.tsinghua.edu.cn 
 # @Last Modified By: Howard
-# @Last Modified Time: Jan 11, 2025 2:52 PM
+# @Last Modified Time: Jan 12, 2025 7:33 PM
 # @Description: Modify Here, Please 
 
 import cv2
@@ -250,30 +250,50 @@ def liquidSegemntation(image, spline_points, radial_vector, tangent_vectors):
     ad_thresh_image_array = np.frombuffer(buffer.getvalue(), dtype=np.uint8)
     ad_thresh_image = cv2.imdecode(ad_thresh_image_array, cv2.IMREAD_COLOR)
 
+    # 将图像上的点基于单应矩阵转换到世界坐标系下
+    def image_to_world(image_point):
+        # H =[[ 6.74796726e-03, -2.18825058e-04, -2.10950619e+00],
+        # [ 1.19355280e-04,  5.55252687e-03, -1.33755865e+00],
+        # [ 1.00979444e-05, -7.56087199e-06,  1.00000000e+00]]
+        H = [[ 6.71436311e-03, -2.31093341e-04, -2.08467905e+00],
+            [ 1.24171475e-04,  5.52040024e-03, -1.33115882e+00],
+            [ 9.50420329e-06, -1.14737867e-05,  1.00000000e+00]]
+        image_point_homogeneous = np.append(image_point, 1)
+        world_point_homogeneous = np.dot(H, image_point_homogeneous)
+        world_point = world_point_homogeneous[:2] / world_point_homogeneous[2]
+        return world_point
+
 
     image_seg = image.copy()
     h, _ = image_seg.shape[:2]
     # 可视化+参数统计
     num_liquid = 0
     length = 0
+    length_world = 0
     begin_interval_point = True
     touch_the_end_flag = False
     xp,yp = spline_points[0]
+    xp_world, yp_world = image_to_world([xp,yp])
     for point, j in zip(spline_points, AV_brightness_weight):
         if j > threshold:
             num_liquid += 1
             x, y = int(round(point[0])), int(round(point[1]))
+            x_world, y_world = image_to_world([x,y])
             if abs(y-h) < 20: 
                 touch_the_end_flag = True
             cv2.circle(image_seg, (x, y), radius=5, color=(0, 255, 0), thickness=-1)  # 标记点
             if not begin_interval_point:
                 distance = np.sqrt((x-xp)**2+(y-yp)**2)
+                distance_world = np.sqrt((x_world-xp_world)**2+(y_world-yp_world)**2)
                 length = length + distance
+                length_world = length_world + distance_world
             begin_interval_point = False
             xp,yp = x,y
+            xp_world, yp_world = x_world,y_world
         else:
             begin_interval_point = True
+
     
-    return image_seg, ad_thresh_image, length
+    return image_seg, ad_thresh_image, length, length_world
 
 

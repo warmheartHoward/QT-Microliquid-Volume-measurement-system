@@ -317,7 +317,7 @@ class ImageProcessingWindow(BaseWindow):
                 radial_vector = data["radial_vector"]
                 tangent_vectors = data["tangent_vectors"]
                 image = cv2.imread(self.image_path)
-                image_seg, adthresh_image, length =  liquidSegemntation(image, spline_points=spline_points, radial_vector= radial_vector, tangent_vectors=tangent_vectors)
+                image_seg, adthresh_image, length, length_world =  liquidSegemntation(image, spline_points=spline_points, radial_vector= radial_vector, tangent_vectors=tangent_vectors)
                 pixmap_image_seg = self.cv2pixmap(image_seg)
                 self.processed_image_label.setPixmap(
                     pixmap_image_seg.scaled(self.processed_image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
