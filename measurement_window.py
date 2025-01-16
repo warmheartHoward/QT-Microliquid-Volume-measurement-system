@@ -12,13 +12,12 @@ from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QMovie
 from base_window import BaseWindow
 import os
-import sys
 import numpy as np
-from image_process_utils.image_processing_c import preprocessing, liquidSegemntation
+from utils.image_processing import liquidSegemntation
 import cv2
 
-class ProcessingThread(QThread):
-    result_ready = pyqtSignal()
+class ProcessingThread_M(QThread):
+    result_ready_M = pyqtSignal()
 
     def __init__(self, algorithm):
         super().__init__()
@@ -27,7 +26,7 @@ class ProcessingThread(QThread):
     def run(self):
         # 在这里调用 self.algorithm 来执行特定的算法
         result = self.algorithm()
-        self.result_ready.emit()
+        self.result_ready_M.emit()
 
 
 class MeasurementWindow(BaseWindow):
@@ -38,7 +37,7 @@ class MeasurementWindow(BaseWindow):
         self.save_path = None
         
     def add_content(self, layout):
-      
+        layout = layout
         # Image selection button
         self.image_select_btn = QPushButton("选择图像文件")
         self.image_select_btn.clicked.connect(self.load_image)
@@ -47,12 +46,12 @@ class MeasurementWindow(BaseWindow):
             font-size: 14px;
             padding: 8px;
             border-radius: 4px;
-            background-color: #2196F3;
+            background: #2196F3;
             color: white;
             border: none;
         }
         QPushButton:hover {
-            background-color: #45a049;
+            background: #45a049;
         }
         """)
 
@@ -68,7 +67,7 @@ class MeasurementWindow(BaseWindow):
                 font-size: 20px;
                 border: 2px solid #555;
                 min-width: 400px;
-                min-height: 300px;
+                min-height: 400px;
             }
         """)
         
@@ -85,7 +84,7 @@ class MeasurementWindow(BaseWindow):
                 font-size: 20px;
                 border: 2px solid #555;
                 min-width: 400px;
-                min-height: 300px;
+                min-height: 400px;
             }
         """)
 
@@ -99,7 +98,7 @@ class MeasurementWindow(BaseWindow):
             font-size: 14px;
             padding: 8px;
             border-radius: 5px;
-            background-color: #2196F3;
+            background: #2196F3;
             color: white;
             border: none;
         }
@@ -115,7 +114,7 @@ class MeasurementWindow(BaseWindow):
             font-size: 14px;
             padding: 8px;
             border-radius: 5px;
-            background-color: #FF5722;
+            background: #FF5722;
             color: white;
             border: none;
         }
@@ -142,8 +141,8 @@ class MeasurementWindow(BaseWindow):
         self.statusLabel.raise_()  # 确保在最上层
         self.movie = QMovie("image/loading.gif")
         self.movie.setScaledSize(self.statusLabel.size())  # 缩放GIF尺寸
-        spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
-        self.otherfunction.addItem(spacer)
+        spacer1 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        self.otherfunction.addItem(spacer1)
         self.otherfunction.addWidget(self.statusLabel)
 
         # 一键清除功能
@@ -162,29 +161,30 @@ class MeasurementWindow(BaseWindow):
                     background: #45a049;
                 }
         """)
-        spacer = QSpacerItem(50, 20, QSizePolicy.Fixed, QSizePolicy.Minimum)
         
-        # Layout setup
+        # # Layout setup
         vbox = QVBoxLayout()
         vbox.addWidget(self.image_select_btn)
-        vbox.addItem(spacer)
+        spacer2 = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        vbox.addItem(spacer2)
         image_layout.addWidget(self.original_image_label)
         image_layout.addWidget(self.processed_image_label)
         vbox.addLayout(image_layout)
 
         button_layout = QVBoxLayout()
-        # 创建固定宽度的占位组件（例如 50 像素宽）
-        spacer_button = QSpacerItem(50, 50, QSizePolicy.Fixed, QSizePolicy.Minimum)
+        # # 创建固定宽度的占位组件（例如 50 像素宽）
+        spacer_button1 = QSpacerItem(50, 50, QSizePolicy.Fixed, QSizePolicy.Minimum)
         button_layout.addWidget(self.calibration_measure_btn)
-        button_layout.addItem(spacer_button)
+        button_layout.addItem(spacer_button1)
         button_layout.addWidget(self.homography_measure_btn)
-        button_layout.addItem(spacer_button)
+        spacer_button2 = QSpacerItem(50, 50, QSizePolicy.Fixed, QSizePolicy.Minimum)
+        button_layout.addItem(spacer_button2)
         button_layout.addWidget(self.clearall)
         
         main_layout = QHBoxLayout()
         main_layout.addLayout(button_layout)
         main_layout.addWidget(self.text_display)
-        vbox.addItem(spacer)
+        # vbox.addItem(spacer)
         vbox.addLayout(main_layout)
         vbox.addLayout(self.otherfunction)
         layout.addLayout(vbox)
@@ -201,7 +201,7 @@ class MeasurementWindow(BaseWindow):
             pixmap = QPixmap(file_name)
             self.original_image_label.setPixmap(
                 pixmap.scaled(
-                self.processed_image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                self.original_image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
                 )
             )
 
@@ -219,8 +219,8 @@ class MeasurementWindow(BaseWindow):
         self.statusLabel.setMovie(self.movie)
         self.movie.start()
         
-        self.thread = ProcessingThread(algorithm)
-        self.thread.result_ready.connect(self.on_result_ready)
+        self.thread = ProcessingThread_M(algorithm)
+        self.thread.result_ready_M.connect(self.on_result_ready)
         self.thread.start()
 
         # 结束movie的动画

@@ -2,7 +2,7 @@
 Author: Howard
 Date: 2025-01-07 17:20:36
 LastEditors: warmheartHoward 1366194556@qq.com
-LastEditTime: 2025-01-15 22:41:08
+LastEditTime: 2025-01-15 14:43:37
 FilePath: \QT\calibration_window.py
 Description: 
 
@@ -12,53 +12,34 @@ import sys
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QLabel, QLineEdit,
     QTextEdit, QVBoxLayout, QHBoxLayout, QFileDialog, QGroupBox,
-    QGridLayout, QDialog, QFormLayout, QDialogButtonBox, QSpacerItem, QSizePolicy, QMessageBox
+    QGridLayout, QDialog, QFormLayout, QDialogButtonBox, QSpacerItem, QSizePolicy
 )
 from PyQt5.QtWidgets import QApplication, QMainWindow
+from pyqtgraph import ErrorBarItem
 
 from PyQt5.QtCore import Qt
 from base_window import BaseWindow
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QPixmap, QImage
-from PyQt5.QtGui import QMovie
+from PyQt5.QtGui import QMovie, QFont
 import cv2
-import matplotlib
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-
-from matplotlib.figure import Figure
+import pyqtgraph as pg
 from utils.calibration_methods import calibration_process
-from utils.image_processing import distort_image, homography_matrix_cal
 import os
-matplotlib.use('Agg')  # 使用非交互式后端
+import numpy as np
+# from PyQt5.QtWidgets import QGraphicsLineItem
+
  
 # 自定义的 FigureCanvas 类
-# 自定义的 FigureCanvas 类
-class MplCanvas(FigureCanvas):
-    def __init__(self, fig=None, parent=None, width=4, height=4, dpi=100):
-        if fig is None:
-            self.figure = Figure(figsize=(width, height), dpi=dpi)
-            self.figure = Figure()
-        else:
-            self.figure = fig
-        super(MplCanvas, self).__init__(self.figure)
-
-        # 设置 SizePolicy 以允许自动调整大小
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.updateGeometry()
-        self.setParent(parent)
-        self.ax = self.figure.add_subplot(111)
-        self.figure.tight_layout()
-        
-    def update_with_figure(self, new_fig: Figure):
-        self.figure.clf()
-        self.figure = new_fig
-        self.draw()
-
-    def clear(self):
-        self.figure.clf()
-        self.ax = self.figure.add_subplot(111)
-        self.draw()
-        # self.figure.tight_layout()
+class CustomPlotWidget(pg.PlotWidget):
+    def __init__(self, parent=None, title=""):
+        super().__init__(parent)
+        self.setBackground('w')  # 设置背景为白色
+        if title:
+            # 使用 plotItem 的 setTitle 方法设置标题
+            self.plotItem.setTitle(title, color='black', size='12pt')
+        self.showGrid(x=True, y=True)
+        self.addLegend()
 
 class ProcessingThread(QThread):
     result_ready = pyqtSignal(object)
@@ -76,17 +57,23 @@ class CalibrationWindow(BaseWindow):
     """Calibration window"""
     def __init__(self):
         super().__init__("系统标定")
-        self.excel_file_path = None
-        self.image_data_col = "F"
-        self.balance_data_col = "J"
-        self.image_path = None
-        self.distribution = None
-        self.distance = None
+        self.initial_settings = {
+            'excel_file_path': None,
+            'image_data_col': "F",
+            'balance_data_col': "J"
+        }
+        self.excel_file_path = self.initial_settings['excel_file_path']
+        self.image_data_col = self.initial_settings['image_data_col']
+        self.balance_data_col = self.initial_settings['balance_data_col']
+        # self.add_content(self.layout)
+        # self.excel_file_path = None
+        # self.image_data_col = "F"
+        # self.balance_data_col = "J"
         
         
     def add_content(self, layout):
         # 主布局
-        self.dpi = 125
+        self.dpi = 100
         main_layout = QHBoxLayout()
         # 左侧布局
         left_layout = QVBoxLayout()
@@ -106,7 +93,7 @@ class CalibrationWindow(BaseWindow):
         """)
         # 设置整个QGroupBox的字体
         font = calibration_group.font()
-        font.setPointSize(14)  # 设置字体大小
+        font.setPointSize(12)  # 设置字体大小
         font.setBold(True)     # 字体加粗
         calibration_group.setFont(font)
         calibration_group.setFixedSize(400, 400)
@@ -173,7 +160,7 @@ class CalibrationWindow(BaseWindow):
 
         # 一键标定按钮
         self.calibration_button = QPushButton("一键标定")
-        self.calibration_button.clicked.connect(lambda: self.start_task(self.calibration_algorithm))
+        self.calibration_button.clicked.connect(lambda: self.start_task(self.calibration_algorithm, self.calibration_result_callback))
         self.calibration_button.setStyleSheet("""
             QPushButton {
                 font-size: 14px; 
@@ -233,7 +220,7 @@ class CalibrationWindow(BaseWindow):
         homography_select_layout.addWidget(self.image_select_button)
 
         # 图像畸变参数输入按钮
-        self.distortion_params_button = QPushButton("图像畸变矫正")
+        self.distortion_params_button = QPushButton("图像畸变参数手动输入")
         self.distortion_params_button.setStyleSheet("""
             QPushButton {
                 font-size: 14px; 
@@ -247,15 +234,13 @@ class CalibrationWindow(BaseWindow):
                 background-color: #7B1FA2;
             }
         """)
-        self.distortion_params_button.clicked.connect(lambda: self.start_task(self.distortion_image_algorithm))
-        # self.distortion_params_button.clicked.connect(self.distortion_image_algorithm)
+        self.distortion_params_button.clicked.connect(self.input_distortion_params)
         homography_select_layout.addWidget(self.distortion_params_button)
         # 一键计算按钮
-        self.compute_button = QPushButton("单应矩阵计算")
-        self.compute_button.clicked.connect(self.open_input_dialog)
+        self.compute_button = QPushButton("一键计算")
         self.compute_button.setStyleSheet("""
             QPushButton {
-                font-size: 14px; 
+                font-size: 16px; 
                 padding: 10px; 
                 border-radius: 20px; 
                 background-color: #2196F3; 
@@ -295,19 +280,41 @@ class CalibrationWindow(BaseWindow):
 
 
         self.calibration_image_layout = QHBoxLayout()
-        # 创建两个 FigureCanvas，并添加到布局中
-        self.left_canvas = MplCanvas(width=4, height=4, dpi=self.dpi)
-        self.left_canvas.setFixedWidth(400)
-        self.left_canvas.setFixedHeight(400)
-        self.right_canvas = MplCanvas(width=4, height=4, dpi=self.dpi)
-        self.right_canvas.setFixedWidth(400)
-        self.right_canvas.setFixedHeight(400)
-        self.calibration_image_layout.addWidget(self.left_canvas)
-        self.calibration_image_layout.addWidget(self.right_canvas)
+        self.left_image = QLabel("线性拟合结果图像显示区域")
+        self.left_image.setAlignment(Qt.AlignCenter)
+        self.left_image.setStyleSheet("""
+            QLabel {
+                background: #333;
+                color: #fff;
+                font-size: 20px;
+                border: 2px solid #555;
+                min-width: 300px;
+                min-height: 300px;
+            }
+        """)
+        self.right_image = QLabel("拟合结果分组误差条图")
+        self.right_image.setAlignment(Qt.AlignCenter)
+        self.right_image.setStyleSheet("""
+            QLabel {
+                background: #333;
+                color: #fff;
+                font-size: 20px;
+                border: 2px solid #555;
+                min-width: 300px;
+                min-height: 300px;
+            }
+        """)
+            # 创建两个 FigureCanvas，并添加到布局中
+        # 使用 PyQtGraph 的 PlotWidget 代替 Matplotlib Canvas
+        self.left_plot = CustomPlotWidget(title="线性拟合结果图像显示区域")
+        self.right_plot = CustomPlotWidget(title="拟合结果分组误差条图")
+        self.calibration_image_layout.addWidget(self.left_plot)
+        self.calibration_image_layout.addWidget(self.right_plot)
         
 
         # 单应矩阵计算示意图
-        self.image_display = QLabel("图像显示区域")
+        # image_display = QHBoxLayout()
+        self.image_display = QLabel("标记点检测图像")
         # self.image_display.setFixedSize(800, 300)
         self.image_display.setAlignment(Qt.AlignCenter)
         self.image_display.setStyleSheet("""
@@ -316,11 +323,30 @@ class CalibrationWindow(BaseWindow):
                 color: #fff;
                 font-size: 20px;
                 border: 2px solid #555;
-                min-width: 800px;
+                min-width: 400px;
                 min-height: 350px;
             }
         """)
+        # self.calibration_image_display = QLabel("标定板图像示例")
+        # self.calibration_image_display.setAlignment(Qt.AlignCenter)
+        # self.calibration_image_display.setStyleSheet("""
+        #     QLabel {
+        #         background: #333;
+        #         color: #fff;
+        #         font-size: 20px;
+        #         border: 2px solid #555;
+        #         min-width: 400px;
+        #         min-height: 350px;
+        #     }
+        # """)
+        # image_display.addWidget(self.image_display)
+        # image_display.addWidget()
 
+        
+
+
+
+        ###################################################################################################################
         # 右下角加载动画
         self.otherfunction = QHBoxLayout()
         self.statusLabel = QLabel(self)
@@ -333,7 +359,7 @@ class CalibrationWindow(BaseWindow):
 
         # 一键清除功能
         self.clearall = QPushButton("一键清除")
-        self.clearall.clicked.connect(self.on_clear_all_call)
+        self.clearall.clicked.connect(self.clearAll)
         self.clearall.setFixedSize(120, 30)
         self.clearall.setStyleSheet("""
                 QPushButton {
@@ -359,6 +385,9 @@ class CalibrationWindow(BaseWindow):
 
         right_layout.addWidget(self.image_display)
         right_layout.addLayout(self.otherfunction)
+
+
+        # right_layout.addWidget(self.text_display)
 
         # 将左侧和右侧布局添加到主布局
         main_layout.addLayout(left_layout, 1)
@@ -397,47 +426,17 @@ class CalibrationWindow(BaseWindow):
             self, "选择图像", "", "图像文件 (*.png *.jpg *.bmp);;所有文件 (*)", options=options
         )
         if file_path:
-            self.image_path = file_path
             pixmap = QPixmap(file_path)
             pixmap = pixmap.scaled(self.image_display.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
             self.image_display.setPixmap(pixmap)
             self.text_display.append(f"选择的图像路径: {file_path}")
 
-    def distortion_image_algorithm(self):
-        if self.image_path is not None:
-            if self.intrinsic_parameter is not None and self.distortion_parameter is not None:
-                image = cv2.imread(self.image_path)
-                dist_img = distort_image(image, self.intrinsic_parameter, self.distortion_parameter)
-                dist_img_p = self.cv2pixmap(dist_img)
-                
-                dist_img_p = dist_img_p.scaled(self.image_display.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                self.image_display.clear()
-                self.image_display.setPixmap(dist_img_p)
-            else:
-                self.text_display.clear()
-                self.text_display.append(f"请先到图像处理单元进行相机参数标定")
-
-        else:
-            self.text_display.append(f"请先打开带有标记点的图片")
-
-            
-    def homography_cal_algorithm(self):
-        if self.image_path is None:
-            self.text_display.clear()
-            self.text_display.append(f"请先打开带有标记点的图片")
-            return
-        
-        if self.distribution is not None and self.circle_distance is not None: 
-            image = cv2.imread(self.image_path)
-            H, dst_ = homography_matrix_cal(image, self.intrinsic_parameter, self.distortion_parameter, self.distribution, self.circle_distance)
-            dst_p = self.cv2pixmap(dst_)
-            dst_p = dst_p.scaled(self.image_display.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.image_display.clear()
-            self.image_display.setPixmap(dst_p)
-            self.text_display.append(f"图像坐标系与世界坐标系之间的单应矩阵为：{H}")
-        else:
-             self.text_display.append(f"每一进行标记点的输入")
-
+    def input_distortion_params(self):
+        """弹出窗口输入畸变参数"""
+        dialog = DistortionParamsDialog(self)
+        if dialog.exec_() == QDialog.Accepted:
+            params = dialog.get_params()
+            self.text_display.append(f"输入的畸变参数: {params}")
 
     def cv2pixmap(self, image):
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -449,161 +448,195 @@ class CalibrationWindow(BaseWindow):
         pixmap = QPixmap.fromImage(qimage)
         return pixmap
     
-    def start_task(self, algorithm):
+    def start_task(self, algorithm, result_callback):
         self.statusLabel.setMovie(self.movie)
         self.movie.start()
         
         self.thread = ProcessingThread(algorithm)
-        self.thread.result_ready.connect(self.on_result_ready)
+        self.thread.result_ready.connect(lambda result:self.on_result_ready(result, result_callback))
         self.thread.start()
 
-    # 结束movie的动画
-    def on_result_ready(self):
+        # 结束movie的动画
+    def on_result_ready(self, result, result_callback):
         self.movie.stop()
         self.statusLabel.clear()
+        result_callback(result)
+        
 
 
     def calibration_algorithm(self):
         if self.excel_file_path != None:
             model_str, x2, real_weight, y_fit, bin_centers, bin_means, bin_errors, R2 = calibration_process(self.excel_file_path, self.image_data_col, self.balance_data_col, "H")
-            sc1 = Figure(figsize=(4, 4), dpi=self.dpi)
-            axes1 =sc1.add_subplot(111)
-            axes1.clear()
-            # 绘制线性拟合图
-            axes1.plot(x2, y_fit, label='Calibration', linestyle='-', color = "r")
-            axes1.scatter(x2, real_weight, label='Real Volume', marker='.', color = "b")
-            axes1.set_title("Linear Fitting Results of the Calibration Measurement Method", fontsize = 10)
-            axes1.set_xlabel("Liquid Segment Length in the Pixel Coordinate System (pixels)")
-            axes1.set_ylabel("Real Volume (mL)")
-            axes1.grid(True, linestyle='--', alpha=0.6)
-            axes1.text(2000, 0.5, f"$R^2 = {R2:.3f}$", fontsize=12, color='k')
-            axes1.legend()
-            self.left_canvas.update_with_figure(sc1)
-            sc2 = Figure(figsize=(4, 4), dpi=self.dpi)
-            axes2 = sc2.add_subplot(111)
-            axes2.errorbar(bin_centers, bin_means, yerr=bin_errors, fmt='o', label='Measurement',
-                     color='b', ecolor='g', elinewidth=2, capsize=4, markersize = 8, markerfacecolor='none', markeredgewidth=0.8)
-            axes2.plot(real_weight, real_weight, 'r--', linewidth=1, label='True Value')
-            axes2.grid(True, linestyle='--', alpha=0.6)
-            axes2.set_title('Error Bar Chart Of the Calibration Measurement Method', fontsize = 10)
-            axes2.set_xlabel('Real Volume/mL')
-            axes2.set_ylabel('Calibration-Based Volume Measurement/mL')
-            axes2.legend(loc='upper left')
-            self.right_canvas.update_with_figure(sc2)
+            return [model_str, x2, y_fit, real_weight, bin_centers, bin_means, bin_errors, R2]
 
+            
         else:
             self.text_display.clear()
             self.text_display.append("请先打开采集的excel数据文件")
             return None
-        
 
-    def open_input_dialog(self):
-        if self.image_path is not None:
-            dialog = InputDialog(self)
-            if dialog.exec_() == QDialog.Accepted:
-                self.distribution = dialog.distribution
-                self.circle_distance = dialog.circle_distance
-                self.text_display.append(
-                    f"特征点分布: {self.distribution}\n圆心距离: {self.circle_distance}"
-                )
-                self.start_task(self.homography_cal_algorithm)
-            else:
-                self.text_display.append("用户取消了输入。")
-        else:
-            self.text_display.append(f"请先打开带有标记点的图片")
-    
-    def on_clear_all_call(self):
+
+    def calibration_result_callback(self, result):
+        
+        model_str, x2, y_fit, real_weight, bin_centers, bin_means, bin_errors, R2 = result
         self.text_display.clear()
-        self.start_task(self.clear_all)
-    
-    def clear_all(self):
-        self.left_canvas.clear()
-        self.right_canvas.clear()
-        self.image_display.clear()
-        self.image_display.setText("图像显示区域")
-        self.excel_file_path = None
-        self.image_data_col = "F"
-        self.balance_data_col = "J"
-        self.image_path = None
-        self.distribution = None
-        self.distance = None
-        
-        
+        self.text_display.append(model_str)
+
+        # 清除之前的绘图
+        self.left_plot.clear()
+        self.right_plot.clear()
+        # 确保数据是numpy数组
+        x2 = np.array(x2)
+        y_fit = np.array(y_fit)
+        real_weight = np.array(real_weight)
+        bin_centers = np.array(bin_centers)
+        bin_means = np.array(bin_means)
+        bin_errors = np.array(bin_errors)
+   
+        # 绘制线性拟合图
+        self.left_plot.plot(x2, y_fit, pen=pg.mkPen(color='r', width=2), name='Calibration')
+        # 绘制实际数据点
+        scatter = pg.ScatterPlotItem(
+            x=x2,
+            y=real_weight,
+            pen=pg.mkPen(color='b'),
+            brush=pg.mkBrush(color='b'),
+            symbol='o',
+            size=5,
+            name='Real Volume'
+        )
+        self.left_plot.addItem(scatter)
+        # 添加 R² 文本
+        text_item = pg.TextItem(f"R² = {R2:.3f}", anchor=(0,1), color='r')
+        if len(x2) > 0 and len(y_fit) > 0:
+            x_max = np.max(x2)
+            y_max = np.max(y_fit)
+            text_item.setPos(x_max * 0.3, y_max * 0.6)
+        self.left_plot.addItem(text_item)
+        self.left_plot.setLabel('left', "Real Volume (mL)")
+        self.left_plot.setLabel('bottom', "Liquid Segment Length in the Pixel Coordinate System (pixels)")
+        self.left_plot.setTitle("Linear Fitting Results of the Calibration Measurement Method",  size="9pt")
+
+
+        # 绘制误差条图，使用 ErrorBarItem
+        error_bars = ErrorBarItem(
+            x=bin_centers,
+            y=bin_means,
+            height=bin_errors,
+            beam=0.01,  # 设置“帽子”的宽度
+            pen=pg.mkPen(color='g', width =1)
+        )
+        self.right_plot.addItem(error_bars)
+
+        # 绘制测量数据点（散点，不连接线）
+        measurement_scatter = pg.ScatterPlotItem(
+            x=bin_centers,
+            y=bin_means,
+            pen=pg.mkPen(color='b'),
+            brush=pg.mkBrush(color='b'),
+            symbol='o',
+            size=4,
+            name='Measurement'
+        )
+        self.right_plot.addItem(measurement_scatter)
+
+        # 绘制真实值参考线（连续线条）
+        if len(bin_centers) > 0:
+            x_min = np.min(bin_centers)
+            x_max = np.max(bin_centers)
+            self.right_plot.plot(
+                [x_min, x_max],
+                [x_min, x_max],
+                pen=pg.mkPen(color='r', style=Qt.DashLine, width=2),
+                name='True Value'
+            )
+        # 添加图例
+        self.right_plot.setLabel('left', "Calibration-Based Volume Measurement/mL")
+        self.right_plot.setLabel('bottom', "Real Volume/mL")
+        self.right_plot.setTitle('Error Bar Chart Of the Calibration Measurement Method', size="9pt")
+        # 锁定纵横比为 1:1
+        self.right_plot.setAspectLocked(True, ratio=1.0)
+
+        # 添加图例
+        self.left_plot.addLegend()
+        self.right_plot.addLegend()
+
+
+        # 设置 PlotWidget 的大小策略为扩展，以自适应布局
+        self.left_plot.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.right_plot.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # 自动调整坐标轴范围
+        self.left_plot.enableAutoRange()
+        self.right_plot.enableAutoRange()
+
+    def clearAll(self):
+        """清空所有图表内容，重置标签和变量到初始化状态。"""
+        # 1. 清空图表
+        self.left_plot.clear()
+        self.right_plot.clear()
+        # 2. 重置标题
+        self.left_plot.setTitle("线性拟合结果图像显示区域", color="black", size="14pt")
+        self.right_plot.setTitle("拟合结果分组误差条图", color="black", size="14pt")
+        # 5. 清空文本显示区域
+        self.text_display.clear()
+        # 6. 重置输入字段
+        self.image_feature_input.setText(self.initial_settings['image_data_col'])
+        self.balance_data_input.setText(self.initial_settings['balance_data_col'])
+        self.image_feature_input.setReadOnly(False)  # 允许重新输入
+        self.balance_data_input.setReadOnly(False)  # 允许重新输入
+        # 7. 重置相关变量
+        self.excel_file_path = self.initial_settings['excel_file_path']
+        self.image_data_col = self.initial_settings['image_data_col']
+        self.balance_data_col = self.initial_settings['balance_data_col']
+
+
+
+
+
+
+
 
         
 
 
-
-class InputDialog(QDialog):
+class DistortionParamsDialog(QDialog):
+    """畸变参数输入对话框"""
     def __init__(self, parent=None):
-        super(InputDialog, self).__init__(parent)
-        self.setWindowTitle("输入特征点分布和圆心距离")
-        self.setup_ui()
+        super().__init__(parent)
+        self.setWindowTitle("输入畸变参数")
+        self.setModal(True)
+        self.init_ui()
 
-    def setup_ui(self):
-        layout = QVBoxLayout()
+    def init_ui(self):
+        layout = QFormLayout()
 
-        # 特征点分布输入
-        distribution_layout = QHBoxLayout()
-        distribution_label = QLabel("特征点分布（例如 [8,1,1,8]）：")
-        self.distribution_input = QLineEdit()
-        self.distribution_input.setPlaceholderText("[8,1,1,8]")
-        self.distribution_input.setText("[8,1,1,8]")  # 设置默认值
-        distribution_layout.addWidget(distribution_label)
-        distribution_layout.addWidget(self.distribution_input)
-        layout.addLayout(distribution_layout)
+        self.k1_input = QLineEdit()
+        self.k2_input = QLineEdit()
+        self.p1_input = QLineEdit()
+        self.p2_input = QLineEdit()
+        self.k3_input = QLineEdit()
 
-        # 圆心距离输入
-        distance_layout = QHBoxLayout()
-        distance_label = QLabel("圆心距离 (circle_distance, 单位: cm)：")
-        self.distance_input = QLineEdit()
-        self.distance_input.setPlaceholderText("请输入圆心距离，例如 1")
-        self.distance_input.setText("1")  # 设置默认值
-        distance_layout.addWidget(distance_label)
-        distance_layout.addWidget(self.distance_input)
-        layout.addLayout(distance_layout)
+        layout.addRow("k1:", self.k1_input)
+        layout.addRow("k2:", self.k2_input)
+        layout.addRow("p1:", self.p1_input)
+        layout.addRow("p2:", self.p2_input)
+        layout.addRow("k3:", self.k3_input)
 
-        # 按钮
-        button_layout = QHBoxLayout()
-        self.ok_button = QPushButton("确定")
-        self.cancel_button = QPushButton("取消")
-        button_layout.addStretch()
-        button_layout.addWidget(self.ok_button)
-        button_layout.addWidget(self.cancel_button)
-        layout.addLayout(button_layout)
+        # 确认和取消按钮
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
 
         self.setLayout(layout)
 
-        # 连接信号
-        self.ok_button.clicked.connect(self.validate_and_accept)
-        self.cancel_button.clicked.connect(self.reject)
-
-    def validate_and_accept(self):
-        distribution_text = self.distribution_input.text().strip()
-        distance_text = self.distance_input.text().strip()
-
-        # 验证特征点分布格式
-        if not (distribution_text.startswith('[') and distribution_text.endswith(']')):
-            QMessageBox.warning(self, "输入错误", "特征点分布应为类似 [8,1,1,8] 的格式。")
-            return
-
-        try:
-            # 转换为列表
-            distribution = [int(x.strip()) for x in distribution_text[1:-1].split(',')]
-        except ValueError:
-            QMessageBox.warning(self, "输入错误", "特征点分布中的所有元素应为整数。")
-            return
-
-        # 验证圆心距离为正数
-        try:
-            circle_distance = float(distance_text)
-            if circle_distance <= 0:
-                raise ValueError
-        except ValueError:
-            QMessageBox.warning(self, "输入错误", "圆心距离应为一个正数。")
-            return
-
-        # 如果验证通过，保存数据并关闭对话框
-        self.distribution = distribution
-        self.circle_distance = circle_distance
-        self.accept()
+    def get_params(self):
+        """获取输入的参数"""
+        return {
+            "k1": self.k1_input.text(),
+            "k2": self.k2_input.text(),
+            "p1": self.p1_input.text(),
+            "p2": self.p2_input.text(),
+            "k3": self.k3_input.text(),
+        }

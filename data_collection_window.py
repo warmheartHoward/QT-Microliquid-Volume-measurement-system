@@ -14,7 +14,7 @@ class DataCollectionWindow(BaseWindow):
     def init_camera(self):
         """Initialize camera and timer"""
         self.cap = cv2.VideoCapture(0)
-        print("Initializing camera...")
+        # print("Initializing camera...")
         if not self.cap.isOpened():
             print("Failed to open camera.")
             self.camera_label.setText("无法打开摄像头")
@@ -33,9 +33,9 @@ class DataCollectionWindow(BaseWindow):
                 return
                 
             ret, frame = self.cap.read()
-            print("Capturing frame...")
+            #print("Capturing frame...")
             if ret:
-                print("Frame captured successfully.")
+                #print("Frame captured successfully.")
                 # Convert frame to RGB
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 

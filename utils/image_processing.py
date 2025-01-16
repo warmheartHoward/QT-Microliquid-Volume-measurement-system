@@ -2,7 +2,7 @@
 # @Author: Howard 
 # @Contact: wangh22@mails.tsinghua.edu.cn 
 # @Last Modified By: Howard
-# @Last Modified Time: Jan 12, 2025 7:33 PM
+# @Last Modified Time: Jan 15, 2025 10:25 PM
 # @Description: Modify Here, Please 
 
 import cv2
@@ -14,25 +14,27 @@ import os
 import datetime
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QMovie, QPixmap, QImage
-from image_process_utils.Adapive_Threshold_Algorithm import adaptive_threshold_algorithm
+from utils.Adapive_Threshold_Algorithm import adaptive_threshold_algorithm
 Time = datetime.datetime.now().strftime("%Y-%m-%d")
 import scienceplots
 plt.style.use('science')
 plt.savefig('figure.svg')  # 自动识别为 SVG 格式
 from io import BytesIO
+from matplotlib.figure import Figure
+import matplotlib
 
 
 
-
-
-def distort_image(image):
+def distort_image(image, mtx, dist):
     """
     用于矫正畸变
     """
-    mtx =  [[2.68796219e+03, 0.00000000e+00, 9.78010473e+02],
-            [0.00000000e+00, 2.68879367e+03, 5.36347421e+02],
-            [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]
-    dist =  [[-4.89724302e-01, 5.38995757e-02, -1.70527295e-03,  1.71884255e-04, 3.58879812e-01]]
+    # mtx =  [[2.68796219e+03, 0.00000000e+00, 9.78010473e+02],
+    #         [0.00000000e+00, 2.68879367e+03, 5.36347421e+02],
+    #         [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]
+    mtx = mtx
+    # dist =  [[-4.89724302e-01, 5.38995757e-02, -1.70527295e-03,  1.71884255e-04, 3.58879812e-01]]
+    dist = dist
     mtx = np.array(mtx)
     dist = np.array(dist)
     h, w = image.shape[:2]
@@ -82,10 +84,10 @@ def points_sortting(x_list:list,y_list:list):
     return sorted_points[:,0], sorted_points[:,1]
 
 
-def preprocessing(image, ex_mask):
+def preprocessing(image, ex_mask, mtx, dist):
     # 步骤一 图像畸变矫正
-    image = distort_image(image)
-    ex_mask = distort_image(ex_mask)
+    image = distort_image(image, mtx, dist)
+    ex_mask = distort_image(ex_mask, mtx, dist)
     # 掩膜灰度化
     frame = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY)
     ex_mask = cv2.cvtColor(ex_mask, cv2.COLOR_BGR2GRAY)
@@ -217,9 +219,11 @@ def compute_average_brightness_vectorized_with_weight(
     
     return brightness_values
 
-def liquidSegemntation(image, spline_points, radial_vector, tangent_vectors):
+
+matplotlib.use('Agg')  # 使用非交互式后端
+def liquidSegemntation(image, spline_points, radial_vector, tangent_vectors, mtx, dist):
     # 步骤一：针对tube line提取其径向与切向邻域加权亮度
-    image = distort_image(image)
+    image = distort_image(image, mtx, dist)
     radial_num = 15
     tangent_num = 2
     AV_brightness_weight = compute_average_brightness_vectorized_with_weight(image, spline_points, radial_vector, tangent_vectors, radial_num, tangent_num)
@@ -232,23 +236,27 @@ def liquidSegemntation(image, spline_points, radial_vector, tangent_vectors):
         threshold = Ad_thresh
     print(f"threshold: {threshold}")
     # 步骤三，特征提取与可视化
-    plt.figure(figsize = (8,3))
+    #plt.figure(figsize = (8,3))
+    sc1 = Figure(figsize=(8, 4), dpi=92)
+    # sc1 = Figure()
+    axes1 =sc1.add_subplot(111)
     X = list(range(len(AV_brightness_weight))) 
 
-    plt.plot(X, AV_brightness_weight, color = "g", label = "Weighted Neighborhood Average Brightness of Trajectory point")
-    plt.axhline(y=threshold, color='b', linestyle='--', label=f'Aadptive Threshold')
-    plt.xlabel("Parameterized Node of Trajectory Point t")
-    plt.ylabel("Brightness")
-    plt.title("Adptivae hreshold Extraction of Weighted Neighborhood Average Brightness of Trajectory Point")
-    plt.legend(loc = "lower left")
+    axes1.plot(X, AV_brightness_weight, color = "g", label = "Weighted Neighborhood Average Brightness of Trajectory point")
+    axes1.axhline(y=threshold, color='b', linestyle='--', label=f'Aadptive Threshold')
+    axes1.set_xlabel("Parameterized Node of Trajectory Point t")
+    axes1.set_ylabel("Brightness")
+    axes1.set_title("Adptivae hreshold Extraction of Weighted Neighborhood Average Brightness of Trajectory Point")
+    axes1.legend(loc = "lower left")
+
     # 将图像保存到内存缓冲区
-    buffer = BytesIO()
-    plt.savefig(buffer, format='png', dpi=300)
-    buffer.seek(0)
+    #buffer = BytesIO()
+    #plt.savefig(buffer, format='png', dpi=100)
+    #buffer.seek(0)
 
     # 读取缓冲区数据到 OpenCV 格式（BGR）
-    ad_thresh_image_array = np.frombuffer(buffer.getvalue(), dtype=np.uint8)
-    ad_thresh_image = cv2.imdecode(ad_thresh_image_array, cv2.IMREAD_COLOR)
+    # ad_thresh_image_array = np.frombuffer(buffer.getvalue(), dtype=np.uint8)
+    # ad_thresh_image = cv2.imdecode(ad_thresh_image_array, cv2.IMREAD_COLOR)
 
     # 将图像上的点基于单应矩阵转换到世界坐标系下
     def image_to_world(image_point):
@@ -294,6 +302,139 @@ def liquidSegemntation(image, spline_points, radial_vector, tangent_vectors):
             begin_interval_point = True
 
     
-    return image_seg, ad_thresh_image, length, length_world
+    return image_seg, sc1, length, length_world
 
 
+def generate_world_points(pattern_size, circle_spacing):
+    """生成3D世界坐标"""
+    objp = np.zeros((np.prod(pattern_size), 3), np.float32) #np.prod(pattern_size)表示pattern_size的元素乘积，生成一个二维数组，每行有三列
+    objp[:, :2] = np.mgrid[0:pattern_size[0], 0:pattern_size[1]].T.reshape(-1, 2) # 将之前二维数组没一行的前两个元素变成对应x，y的坐标，reshape(-1, 2)表示将二维数组变成一维数组，-1表示不限制行数，2表示每行有两个元素
+    objp[:, :2] *= circle_spacing
+    return objp
+
+def enhance_image(image_path):
+    # 读取图像
+    img = cv2.imread(image_path)
+    # 转换为灰度图
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # 应用高斯模糊
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0) 
+    # 直方图均衡化
+    equalized = cv2.equalizeHist(blurred)  
+    # 边缘增强（使用Laplacian算子）
+    laplacian = cv2.Laplacian(equalized, cv2.CV_64F)
+    laplacian = cv2.convertScaleAbs(laplacian)  # 转换回合适的图像格式
+    # 组合原图和边缘增强图像
+    alpha = 1.5  # 控制原始图像的影响
+    beta = 0.5   # 控制边缘增强的影响
+    enhanced = cv2.addWeighted(equalized, alpha, laplacian, beta, 0)
+    return enhanced
+
+def distort_image(image, mtx, dist):
+    """
+    用于矫正畸变
+    """
+    mtx = mtx
+    dist =  dist
+    mtx = np.array(mtx)
+    dist = np.array(dist)
+    h, w = image.shape[:2]
+    newcameramtx, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (w, h), 1, (w, h))
+    dst = cv2.undistort(image, mtx, dist, None, newcameramtx)
+    # 裁剪图像以去除黑色区域
+    x, y, w, h = roi
+    dst = dst[y:y + h, x:x + w]
+    return dst
+
+def is_in_line(p1, p2, threshold=20):
+    """判断两个点是否在同一行或同一列，使用阈值来处理浮点数误差"""
+    return abs(p1[1] - p2[1]) < threshold  # 这里以y坐标判断是否在同一行，可根据需要调整
+
+def extract_specific_distribution(circles, desire_config):
+    """从给定的圆心列表中提取符合特定分布的圆心集合"""
+    config = desire_config.copy()
+    x_tolerance = 25  # 定义允许的x值偏差
+    y_threshold = 15  # 定义允许的y值偏差
+    # 先对所有点按y坐标进行排序
+    rows = []
+    
+    # 首先对所有点按y坐标进行排序
+    sorted_circles = sorted(circles, key=lambda x: x[1])
+    # 现根据y分行，再根据x筛选行
+    rows = []
+    current_row = []
+    current_y = sorted_circles[0][1]
+
+    for center in sorted_circles:
+        if abs(center[1] - current_y) <= y_threshold:
+            current_row.append(center)
+            current_y = center[1]
+        else:
+            if current_row:
+                rows.append(current_row)
+            current_row = [center]
+            current_y = center[1]
+    # 添加最后一行
+    if current_row:
+        rows.append(current_row)
+
+    # 筛选符合规则的行，并按X坐标排序
+    specific_rows = []
+    for row in rows:
+        if len(row) in config:
+            sorted_row = sorted(row, key=lambda x: x[0])
+            if not specific_rows or abs(sorted_row[0][0] - specific_rows[-1][0][0]) <= x_tolerance:
+                specific_rows.append(sorted_row)
+                config.remove(len(row))
+    return specific_rows
+
+
+
+def construct_coordinates(shape, distance):
+    coordinates = []
+    for y, count in enumerate(shape):
+        for x in range(count):
+            coordinates.append([x * distance, y * distance])
+    return np.array(coordinates)
+
+
+def homography_matrix_cal(image, mtx, dist, desired_config, circle_distance):
+    """
+    根据图像中已知位置的标记点与畸变系数进行单应矩阵的计算
+    image：带有标记点的原图
+    distortion_paramer:畸变系数
+    point_distribution：图像中特征点的分布
+    circle_distance: 世界坐标系下特征点的真实圆心距
+    """
+    # Step 1 畸变矫正
+    dst = distort_image(image.copy(), mtx, dist)
+    # 图像前处理
+    gray = cv2.cvtColor(dst, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (9, 9), 2)
+    blurred_inv = cv2.bitwise_not(blurred)
+    # 霍夫圆检测
+    circles = cv2.HoughCircles(blurred_inv, cv2.HOUGH_GRADIENT, dp=1, minDist=20, param1=50, param2=30, minRadius=5, maxRadius=40) 
+    # 确保至少检测到一些圆
+    if circles is not None:
+        circles = np.round(circles[0, :]).astype("int")
+    # 绘制检测到的圆
+    # for (x, y, r) in circles:
+    #     cv2.circle(image, (x, y), r, (0, 255, 0), 4) 
+    # 提取特定pattern的圆
+    # pattern rule:
+    # desired_config = [8, 1, 1, 8]
+    desired_config = desired_config 
+    # Step3: 提取特定分布的圆：
+    # 提取符合分布要求的圆心集合
+    specific_rows = extract_specific_distribution(circles, desired_config)
+    dst_ = dst.copy()
+    for row in specific_rows:
+        for (x, y, r) in row:
+            cv2.circle(dst_, (x, y), r, (0, 255, 0), 2)
+    # 求解单应矩阵
+    # 构造世界坐标系下的圆心坐标
+    image_points = np.concatenate(specific_rows, axis = 0)
+    image_points = np.array([[x,y] for (x,y,r) in image_points])
+    world_points = construct_coordinates(desired_config, circle_distance)
+    H, status = cv2.findHomography(image_points, world_points)
+    return H, dst_

@@ -2,7 +2,7 @@
 Author: Howard
 Date: 2025-01-07 13:02:45
 LastEditors: warmheartHoward 1366194556@qq.com
-LastEditTime: 2025-01-10 16:17:51
+LastEditTime: 2025-01-13 15:24:29
 FilePath: \QT\main_window.py
 Description: 
 
@@ -78,18 +78,19 @@ class MainWindow(QMainWindow):
         
         # Set layout
         central_widget.setLayout(layout)
-        self.setStyleSheet(open('styles.css').read())
+        # self.setStyleSheet(open('styles.css').read())
 
     def show_content(self, window_class):
         """Show content in main window with proper resource management"""
         # Get window type name
         window_type = window_class.__name__.lower()
-        
+        print(window_type)
         # Release resources of current window
         current_window_type = next(
             (k for k, v in self.menu_windows.items() if v and v.isVisible()),
             None
         )
+        print(current_window_type)
         if current_window_type:
             current_window = self.menu_windows[current_window_type]
             if hasattr(current_window, 'release_resources'):
@@ -101,7 +102,7 @@ class MainWindow(QMainWindow):
         else:
             window = window_class()
             self.menu_windows[window_type] = window
-            
+        print(window)
         # Clear existing content
         if self.centralWidget().layout():
             while self.centralWidget().layout().count():

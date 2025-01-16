@@ -15,6 +15,10 @@ class BaseWindow(QWidget):
     """Base class for all menu windows"""
     def __init__(self, title):
         super().__init__()
+        self.distortion_parameter = [[-4.89724302e-01, 5.38995757e-02, -1.70527295e-03,  1.71884255e-04, 3.58879812e-01]]
+        self.intrinsic_parameter =   [[2.68796219e+03, 0.00000000e+00, 9.78010473e+02],
+                                      [0.00000000e+00, 2.68879367e+03, 5.36347421e+02],
+                                      [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]
         self.title = title
         self.init_ui()
         
@@ -26,9 +30,9 @@ class BaseWindow(QWidget):
         self.layout = QVBoxLayout()
         
         # Title label
-        title_label = QLabel(f"{self.title} 功能界面")
-        title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
-        self.layout.addWidget(title_label)
+        # title_label = QLabel(f"{self.title} 功能界面")
+        # title_label.setStyleSheet("font-size: 24px; font-weight: bold;")
+        # self.layout.addWidget(title_label)
         
         # Add specific content
         self.add_content(self.layout)
