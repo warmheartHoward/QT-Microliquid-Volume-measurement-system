@@ -21,6 +21,7 @@ class BaseWindow(QWidget):
                                       [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]
         self.title = title
         self.init_ui()
+        self.cam_id = 0
         
     def init_ui(self):
         self.setWindowTitle(self.title)

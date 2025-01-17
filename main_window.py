@@ -2,7 +2,7 @@
 Author: Howard
 Date: 2025-01-07 13:02:45
 LastEditors: warmheartHoward 1366194556@qq.com
-LastEditTime: 2025-01-13 15:24:29
+LastEditTime: 2025-01-16 15:12:09
 FilePath: \QT\main_window.py
 Description: 
 

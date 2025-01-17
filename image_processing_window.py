@@ -338,17 +338,6 @@ class ImageProcessingWindow(BaseWindow):
             }
         """)
         self.results_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-        #self.results_label.setFixedWidth(300)
-        #self.results_label.setFixedHeight(300)
-        # vbox.addWidget(self.results_label)
-        
-        # 输出文本
-        # self.results_label = QTextEdit()
-        # self.results_label.setFixedWidth(400)
-        # self.results_label.setReadOnly(True)
-        # self.results_label.setPlaceholderText("输出文本显示区域")
-        # self.results_label.setStyleSheet("""
-        #     font-size: 14px; 
 
         self.results_label.setWordWrap(True)  # Enable word wrap
 
